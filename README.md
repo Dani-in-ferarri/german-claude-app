@@ -5,6 +5,9 @@ En app (PWA) för att lära sig tyska ord med svensk översättning. Fungerar he
 - **3294 ord** (A1: 977, A2: 1191, B1: 1126) med artikel, plural och böjningsformer för starka verb
 - **56 texter** – berättelser och samtal (A1–B1) som följer svensken Erik som flyttar till München. Tryck på ett ord för att se vad det betyder, tryck på *sv* för översättning av meningen, lyssna på hela texten.
 - **2770 meningar** att översätta från svenska till tyska (skriv själv eller bygg med ordbrickor). 98 % av orden har minst en exempelmening.
+- **Grammatik**: 30 lektioner (A1–B1) med förklaringar på svenska och 273 interaktiva övningar (flerval, luckor, ordföljd, översättning), plus snabbträning i der/die/das, plural och starka verb som genereras ur ordlistan. Lektioner du klarat kommer tillbaka för repetition.
+- **Quiz**: välj nivå (A1, A2, B1 eller alla), ämne, typ av frågor och 10–100 frågor. Felen kan skickas direkt till träningen.
+- **Ingen daglig gräns**: välj ett mål (t.ex. alla ord på 14 dagar), ett fast antal per dag eller fri takt. Träningen sker i omgångar om 20 nya ord – kör så många du vill.
 - Uttal via iPhones inbyggda tyska röst (fungerar offline)
 
 ## Så lär du dig orden på riktigt
@@ -54,6 +57,7 @@ python3 tools/dedupe.py         # ta bort dubbletter i ordlistorna
 - `data/words-*.js` – ordlistan: `tyska | svenska`. Substantiv med artikel och plural (`der Tisch, -e`), verb har svensk översättning som börjar med ”att”, starka verb har tidsformer i parentes.
 - `data/texts-*.js` – berättelser och samtal, en mening per rad: `tyska = svenska`.
 - `data/sentences.js` – övningsmeningar.
-- `js/srs.js` – repetitionsschemat, `js/check.js` – rättning av svar, `js/data.js` – tolkning och koppling av böjda ord till ordlistan.
+- `data/grammar*.js` – grammatiklektioner och övningar.
+- `js/grammar.js` – grammatik och övningsmotor, `js/quiz.js` – quiz, `js/srs.js` – repetitionsschemat, `js/check.js` – rättning av svar, `js/data.js` – tolkning och koppling av böjda ord till ordlistan.
 
 **Viktigt vid ändringar:** höj `VERSION` i `sw.js`, annars fortsätter installerade appar att använda den gamla cachen.

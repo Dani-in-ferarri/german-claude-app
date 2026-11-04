@@ -1,5 +1,5 @@
 // Service worker: caches the whole app so it works without internet.
-const VERSION = 'wortschatz-1.0.0';
+const VERSION = 'wortschatz-1.1.0';
 const FILES = [
   './',
   'index.html',
@@ -11,6 +11,8 @@ const FILES = [
   'js/srs.js',
   'js/check.js',
   'js/speech.js',
+  'js/grammar.js',
+  'js/quiz.js',
   'data/words-a1.js',
   'data/words-a2.js',
   'data/words-b1.js',
@@ -18,6 +20,8 @@ const FILES = [
   'data/texts-a2.js',
   'data/texts-b1.js',
   'data/sentences.js',
+  'data/grammar.js',
+  'data/grammar-a2b1.js',
   'icons/icon-180.png',
   'icons/icon-192.png',
   'icons/icon-512.png',

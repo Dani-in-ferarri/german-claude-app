@@ -269,3 +269,35 @@ ins { color: var(--ok); text-decoration: none; background: var(--ok-bg); border-
 @media (min-width: 700px) {
   .options { grid-template-columns: 1fr 1fr; }
 }
+
+/* v1.1: plan, quick links, grammar, quiz */
+#tabs button { font-size: 10px; }
+#tabs button .ti { font-size: 20px; }
+.plan .plan-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.plan a { color: var(--accent); }
+.quick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.qbtn { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 12px 14px; min-width: 0; }
+.qbtn .qi { font-size: 22px; }
+.qbtn .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drills { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.drill { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; padding: 12px 6px; margin: 0; }
+.drill b { font-size: 15px; }
+.gnum { font-size: 15px; font-weight: 700; width: 32px; height: 32px; border-radius: 50%; background: var(--accent-2); color: var(--accent); display: grid; place-items: center; flex: none; }
+.grammar-text { font-size: 16px; line-height: 1.55; }
+.grammar-text h3 { margin: 16px 0 6px; font-size: 17px; }
+.grammar-text h3:first-child { margin-top: 0; }
+.grammar-text ul { padding-left: 20px; margin: 6px 0; }
+.grammar-text li { margin: 3px 0; }
+.gtable-wrap { overflow-x: auto; margin: 8px 0; }
+.gtable { border-collapse: collapse; width: 100%; font-size: 15px; }
+.gtable th, .gtable td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; }
+.gtable th { background: var(--accent-2); }
+.gex { background: var(--bg); border-left: 3px solid var(--accent); border-radius: 6px; padding: 6px 10px; margin: 6px 0; }
+.gq { font-size: 24px; font-weight: 700; text-align: center; margin: 20px 0 8px; line-height: 1.35; }
+.gq.sv-q { font-size: 21px; }
+.options.row3 { grid-template-columns: repeat(3, 1fr); }
+.options.row3 .opt { text-align: center; font-weight: 700; font-size: 20px; }
+.score-big { font-size: 48px; font-weight: 800; margin: 4px 0; }
+.field { display: block; margin: 10px 0; font-size: 14px; color: var(--muted); }
+.field select { margin-top: 4px; font-size: 16px; color: var(--text); }
+@media (max-width: 360px) { .drills { grid-template-columns: 1fr; } }
