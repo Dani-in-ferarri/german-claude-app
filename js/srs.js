@@ -126,8 +126,28 @@ export function nextNewIds(n) {
   return out;
 }
 
+// How many new words to learn today, according to the chosen pace.
+export function dailyTarget() {
+  const s = state.settings;
+  if (s.pace === 'free') return Infinity;
+  if (s.pace === 'fixed') return s.newPerDay;
+  const t = today();
+  const end = (s.goalStart ?? t) + s.goalDays;
+  const daysLeft = Math.max(1, end - t);
+  const remaining = remainingNew() + dayStats().new;
+  return Math.ceil(remaining / daysLeft);
+}
+export function remainingNew() {
+  let n = 0;
+  for (const w of words) { const c = state.cards[w.id]; if (!c || c.s === 0) n++; }
+  return n;
+}
+export function planDay() {
+  const s = state.settings;
+  return Math.min(s.goalDays, today() - (s.goalStart ?? today()) + 1);
+}
 export function newLeftToday() {
-  return Math.max(0, state.settings.newPerDay - dayStats().new);
+  return Math.max(0, dailyTarget() - dayStats().new);
 }
 
 export function forecast(days = 7) {
@@ -156,7 +176,7 @@ export function reviewKind(id) {
 
 // ---- Session: a queue mixing reviews, new words and in-session repeats -----
 export class Session {
-  constructor({ reviews = [], fresh = [], learning = [], practice = false, maxActive = 4 }) {
+  constructor({ reviews = [], fresh = [], learning = [], practice = false, maxActive = 5 }) {
     this.reviews = reviews.slice();
     this.fresh = fresh.slice();
     this.pending = learning.map((id, i) => ({ id, kind: LEARN_STEPS[state.cards[id].step] || 'type', at: i, learn: true }));

@@ -3,8 +3,12 @@ import { state, load, save, today, dayStats, streak, exportJSON, importJSON, res
 import * as S from './srs.js';
 import { checkWord, checkSentence, fold, diff, sentTokens, lev } from './check.js';
 import { speak, stop as stopSpeech, canSpeak } from './speech.js';
+import { setupGrammar, renderGrammar, lessonsDue, nextLesson } from './grammar.js';
+import { setupQuiz, renderQuiz } from './quiz.js';
+import * as grammarMod from './grammar.js';
+import * as quizMod from './quiz.js';
 
-window.APP_VERSION = '1.0.0';
+window.APP_VERSION = '1.1.0';
 load();
 D.init();
 
@@ -130,7 +134,7 @@ $$('#tabs button').forEach(b => b.addEventListener('click', () => go(b.dataset.t
 
 function render() {
   $$('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  ({ home: renderHome, read: renderRead, write: renderWrite, words: renderWords, more: renderMore })[tab]();
+  ({ home: renderHome, read: renderRead, write: renderWrite, grammar: () => renderGrammar(view), quiz: () => renderQuiz(view), words: renderWords, more: renderMore })[tab]();
 }
 
 // ----------------------------------------------------------------------------
@@ -144,40 +148,60 @@ function countStatus() {
 function renderHome() {
   const due = S.dueIds();
   const learning = S.learningIds();
-  const newLeft = Math.min(S.newLeftToday(), S.nextNewIds(S.newLeftToday()).length);
+  const st = state.settings;
+  const target = S.dailyTarget();
+  const remaining = S.remainingNew();
+  const newLeft = Math.min(S.newLeftToday(), remaining);
   const ds = dayStats();
   const cnt = countStatus();
-  const goal = state.settings.dailyGoal;
-  const prog = Math.min(1, ds.xp / goal);
-  const st = streak();
+  const days = streak();
   const sentDue = sentenceQueue(1000, true).length;
+  const sentNew = sentenceQueue(5000).length - sentDue;
   const hard = D.words.filter(w => S.status(w.id) === 'hard').length;
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
   const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
   const suggestion = suggestText();
-  const total = due.length + learning.length + newLeft;
+  const work = due.length + learning.length + newLeft;
+  const finite = Number.isFinite(target);
+  const prog = finite ? Math.min(1, ds.new / Math.max(1, target)) : Math.min(1, ds.xp / st.dailyGoal);
+  const ringTop = finite ? ds.new : ds.xp;
+  const ringBottom = finite ? target : st.dailyGoal;
+  const minutes = Math.round((Math.min(newLeft, 2000) * 4 * 7 + due.length * 8) / 60);
+  const gDue = lessonsDue();
+  const gNext = nextLesson();
+  const started = D.words.length - remaining;
+  const planInfo = st.pace === 'goal'
+    ? `Mål: alla ord på ${st.goalDays} dagar · dag ${S.planDay()} av ${st.goalDays} · ${target} nya ord idag`
+    : st.pace === 'fixed' ? `${st.newPerDay} nya ord per dag` : 'Fri takt – så många omgångar du vill';
 
   view.innerHTML = `
   <header class="top">
     <div><h1>Hallo! 👋</h1><p class="muted">${new Date().toLocaleDateString('sv-SE', { weekday: 'long', day: 'numeric', month: 'long' })}</p></div>
-    <div class="streak" title="Dagar i rad">🔥 ${st}</div>
+    <div class="streak" title="Dagar i rad">🔥 ${days}</div>
   </header>
   ${isIOS && !standalone ? `<div class="card install">📲 <b>Installera appen:</b> tryck på <b>Dela</b> <span class="ios-share">⬆︎</span> i Safari och välj <b>”Lägg till på hemskärmen”</b>. Då fungerar den offline.</div>` : ''}
   ${!state.onboarded ? onboardingHTML() : ''}
   <section class="card hero">
-    <div class="ring" style="--p:${prog}"><div><b>${ds.xp}</b><span>/${goal}</span></div></div>
+    <div class="ring" style="--p:${prog}"><div><b>${ringTop}</b><span>/${ringBottom}</span></div></div>
     <div class="hero-text">
       <h2>Dagens träning</h2>
-      ${total ? `<p>${due.length ? `<b>${due.length}</b> repetitioner` : ''}${due.length && (newLeft + learning.length) ? ' · ' : ''}${newLeft + learning.length ? `<b>${newLeft + learning.length}</b> nya ord` : ''}</p>
-      <button class="btn big" id="start">Starta</button>`
-      : `<p>Allt klart för idag! 🎉 Kom tillbaka imorgon – det är då repetitionen gör jobbet.</p>
-      <button class="btn" id="more-new">Lär mig 5 nya ord till</button>`}
+      ${work ? `<p>${due.length ? `<b>${due.length}</b> repetitioner` : ''}${due.length && (newLeft + learning.length) ? ' · ' : ''}${newLeft + learning.length ? `<b>${newLeft + learning.length}</b> nya ord` : ''}</p>
+      ${newLeft > st.roundSize ? `<p class="muted small">I omgångar om ${st.roundSize} nya ord · ca ${minutes} min totalt idag</p>` : ''}
+      <button class="btn big" id="start">Starta${newLeft > st.roundSize || due.length > 80 ? ' omgång' : ''}</button>`
+      : remaining ? `<p>Dagens mål klart! 🎉 Vill du köra på?</p><button class="btn" id="more-new">Fortsätt: ${Math.min(st.roundSize, remaining)} nya ord till</button>`
+      : `<p>Du har gått igenom alla ${D.words.length} ord! 🏆 Nu gäller repetition.</p>`}
     </div>
   </section>
-  <section class="grid3">
-    <div class="stat"><b>${cnt.learning + cnt.review + cnt.hard + cnt.mastered}</b><span>påbörjade</span></div>
-    <div class="stat"><b>${cnt.mastered}</b><span>behärskade</span></div>
-    <div class="stat"><b>${D.words.length}</b><span>ord totalt</span></div>
+  <section class="card plan">
+    <div class="plan-row"><span><b>${started}</b> av ${D.words.length} ord påbörjade</span><span class="muted small">${pct(started / D.words.length)} %</span></div>
+    <div class="bar"><i class="b2" style="width:${pct(started / D.words.length)}%"></i><i style="width:${pct(cnt.mastered / D.words.length)}%"></i></div>
+    <p class="muted small">${planInfo} · <a href="#" id="pace">ändra</a></p>
+  </section>
+  <section class="quick">
+    <button class="card qbtn" id="go-write"><span class="qi">✍️</span><b>Skriv meningar</b><span class="muted small">${sentDue ? `${sentDue} att repetera` : `${sentNew} upplåsta`}</span></button>
+    <button class="card qbtn" id="go-grammar"><span class="qi">🧩</span><b>Grammatik</b><span class="muted small">${gDue.length ? `${gDue.length} att repetera` : gNext ? esc(gNext.title) : 'Alla lektioner gjorda'}</span></button>
+    <button class="card qbtn" id="go-quiz"><span class="qi">🎯</span><b>Quiz</b><span class="muted small">Testa A1, A2, B1</span></button>
+    <button class="card qbtn" id="go-read"><span class="qi">📖</span><b>Läs</b><span class="muted small">${suggestion ? esc(suggestion.t.title) : `${D.texts.length} texter`}</span></button>
   </section>
   <section class="card">
     <h3>Nivåer</h3>
@@ -189,15 +213,16 @@ function renderHome() {
     }).join('')}
     <p class="muted small legend"><i class="dot b2"></i> påbörjade <i class="dot"></i> behärskade (intervall ≥ ${S.MASTERED} dagar)</p>
   </section>
-  ${suggestion ? `<section class="card link" id="sugg"><h3>📖 Läs nu</h3><p><b>${esc(suggestion.t.title)}</b> <span class="muted">– ${esc(suggestion.t.sv)}</span></p><p class="muted small">${suggestion.t.level} · ${pct(suggestion.cov)} % av orden kan du redan</p></section>` : ''}
-  <section class="card link" id="go-write"><h3>✍️ Skriv meningar</h3><p class="muted">${sentDue ? `${sentDue} meningar väntar på dig.` : 'Översätt meningar från svenska till tyska med orden du lärt dig.'}</p></section>
   ${hard ? `<section class="card link" id="go-hard"><h3>🧠 Svåra ord (${hard})</h3><p class="muted">Ord du glömt flera gånger. Öva extra – och skriv gärna en minnesregel.</p></section>` : ''}
-  ${S.learningIds().length + cnt.review + cnt.mastered > 0 ? `<button class="btn ghost wide" id="practice">Extraövning (påverkar inte schemat)</button>` : ''}
+  ${learning.length + cnt.review + cnt.mastered > 0 ? `<button class="btn ghost wide" id="practice">Extraövning (påverkar inte schemat)</button>` : ''}
   `;
-  const sb = $('#start'); sb && sb.addEventListener('click', () => startDaily());
-  const mn = $('#more-new'); mn && mn.addEventListener('click', () => startSession({ fresh: S.nextNewIds(5) }));
-  const sg = $('#sugg'); sg && sg.addEventListener('click', () => go('read', suggestion.t.id));
+  const sb = $('#start'); sb && sb.addEventListener('click', () => startRound());
+  const mn = $('#more-new'); mn && mn.addEventListener('click', () => startRound(true));
   $('#go-write').addEventListener('click', () => go('write'));
+  $('#go-grammar').addEventListener('click', () => go('grammar'));
+  $('#go-quiz').addEventListener('click', () => go('quiz'));
+  $('#go-read').addEventListener('click', () => (suggestion ? go('read', suggestion.t.id) : go('read')));
+  $('#pace').addEventListener('click', e => { e.preventDefault(); moreTab = 'stats'; go('more'); setTimeout(() => { const el = $('#pace-card'); el && el.scrollIntoView({ block: 'start' }); }, 50); });
   const gh = $('#go-hard'); gh && gh.addEventListener('click', () => startSession({ reviews: shuffle(D.words.filter(w => S.status(w.id) === 'hard').map(w => w.id)).slice(0, 20), practice: true }));
   const pr = $('#practice'); pr && pr.addEventListener('click', startPractice);
   const ob = $('#ob-ok'); ob && ob.addEventListener('click', () => { state.onboarded = true; save(); render(); });
@@ -245,11 +270,13 @@ function textCoverage(t) {
 let session = null;
 let pendingGrade = null; // {item, grade}
 
-function startDaily() {
-  const learning = S.learningIds();
-  const fresh = S.nextNewIds(S.newLeftToday());
-  const reviews = S.dueIds().slice(0, 200);
-  startSession({ reviews, fresh, learning });
+// One round: due reviews (max 80) + up to roundSize new words. "extra" ignores today's target.
+function startRound(extra = false) {
+  const st = state.settings;
+  const left = extra ? st.roundSize : Math.min(st.roundSize, S.newLeftToday());
+  const fresh = S.nextNewIds(left);
+  const reviews = S.dueIds().slice(0, 80);
+  startSession({ reviews, fresh, learning: S.learningIds() });
 }
 function startPractice() {
   const ids = Object.entries(state.cards).filter(([id, c]) => c.s >= 1 && D.byId.has(id))
@@ -528,7 +555,10 @@ function cardListen(item, w) {
 function showSummary() {
   const r = session.results;
   const total = r.ok + r.bad;
-  const moreNew = S.nextNewIds(5);
+  const moreDue = S.dueIds().length + S.learningIds().length;
+  const moreNew = S.remainingNew();
+  const st = state.settings;
+  const nextNew = Math.min(st.roundSize, S.newLeftToday() || st.roundSize, moreNew);
   overlay.innerHTML = `
     <div class="trainer">
       <div class="t-top"><button class="icon-btn" id="t-close">✕</button></div>
@@ -539,14 +569,14 @@ function showSummary() {
         ${r.learned.length ? `<div class="card left"><h3>Nya ord inlärda (${r.learned.length})</h3><p>${r.learned.map(id => deHTML(D.byId.get(id))).join(', ')}</p><p class="muted small">De kommer tillbaka imorgon.</p></div>` : ''}
         ${r.lapsed.length ? `<div class="card left"><h3>Glömda ord (${r.lapsed.length})</h3><p>${[...new Set(r.lapsed)].map(id => deHTML(D.byId.get(id))).join(', ')}</p><p class="muted small">De kommer tillbaka snart igen.</p></div>` : ''}
         <div class="t-actions col">
-          ${moreNew.length && !session.practice ? '<button class="btn ghost" id="again">Lär mig 5 nya ord till</button>' : ''}
-          <button class="btn" id="done">Klar</button>
+          ${!session.practice && (moreDue || moreNew) ? `<button class="btn" id="again">Nästa omgång: ${moreDue ? `${Math.min(moreDue, 80)} repetitioner` : ''}${moreDue && moreNew ? ' + ' : ''}${moreNew ? `${nextNew} nya ord` : ''}</button>` : ''}
+          <button class="btn ghost" id="done">Klar för nu</button>
         </div>
       </div>
     </div>`;
   $('#t-close').addEventListener('click', closeTrainer);
   $('#done').addEventListener('click', closeTrainer);
-  const a = $('#again'); a && a.addEventListener('click', () => { session = null; startSession({ fresh: moreNew }); });
+  const a = $('#again'); a && a.addEventListener('click', () => { session = null; startRound(!S.newLeftToday()); });
 }
 
 // ----------------------------------------------------------------------------
@@ -817,8 +847,9 @@ function sentenceSummary() {
     <div class="big-emoji">✍️</div><h2>Klart!</h2>
     <p>${sq.ok} rätt · ${sq.bad} fel</p>
     <p class="muted">Meningar du klarade kommer tillbaka om några dagar, de du missade redan imorgon.</p>
-    <div class="t-actions col"><button class="btn" id="done">Klar</button></div></div></div>`;
+    <div class="t-actions col">${sentenceQueue(1).length ? '<button class="btn" id="again">Nästa omgång meningar</button>' : ''}<button class="btn ghost" id="done">Klar</button></div></div></div>`;
   $('#done').addEventListener('click', closeSentences);
+  const ag = $('#again'); ag && ag.addEventListener('click', () => { sq = null; startSentences(sentenceQueue(state.settings.sentencesPerSession)); });
 }
 function closeSentences() {
   if (sq && sq.pending) advanceSentenceSilently();
@@ -833,6 +864,13 @@ function advanceSentenceSilently() { const { s, grade } = sq.pending; if (!sq.re
 // ----------------------------------------------------------------------------
 // WORDS
 const wf = { q: '', status: 'all', level: 'all', topic: 'all', limit: 150 };
+let moreTab = 'words';
+function moreSeg() {
+  return `<div class="seg">${[['words', '🗂️ Ordlista'], ['stats', '📊 Statistik & inställningar']].map(([k, l]) => `<button data-mt="${k}" class="${moreTab === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+}
+function bindMoreSeg() {
+  $$('[data-mt]', view).forEach(b => b.addEventListener('click', () => { moreTab = b.dataset.mt; renderMore(); window.scrollTo(0, 0); }));
+}
 function renderWords() {
   const q = fold(wf.q);
   const list = D.words.filter(w => {
@@ -847,6 +885,7 @@ function renderWords() {
   });
   const topicsHere = D.topics.filter(t => wf.level === 'all' || t.level === wf.level);
   view.innerHTML = `
+    ${moreSeg()}
     <header class="top"><div><h1>Ordlista</h1><p class="muted">${D.words.length} ord · tryck på ett ord för detaljer</p></div></header>
     <input id="q" class="search" type="search" placeholder="Sök på tyska eller svenska…" value="${esc(wf.q)}" autocorrect="off" autocapitalize="off" spellcheck="false">
     <div class="filters">
@@ -859,6 +898,7 @@ function renderWords() {
     <p class="muted small">${list.length} ord</p>
     <div class="wordlist">${list.slice(0, wf.limit).map(w => `<button class="wrow" data-id="${esc(w.id)}"><span class="wr-de">${deHTML(w)}</span><span class="wr-sv">${esc(w.sv)}</span><span class="dot st-${S.status(w.id)}"></span></button>`).join('')}</div>
     ${list.length > wf.limit ? '<button class="btn ghost wide" id="more">Visa fler</button>' : ''}`;
+  bindMoreSeg();
   const qi = $('#q');
   let tmr;
   qi.addEventListener('input', () => { clearTimeout(tmr); tmr = setTimeout(() => { wf.q = qi.value; wf.limit = 150; renderWords(); const n = $('#q'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); });
@@ -886,6 +926,7 @@ function renderWords() {
 // ----------------------------------------------------------------------------
 // MORE: stats, settings, backup, help
 function renderMore() {
+  if (moreTab === 'words') return renderWords();
   const cnt = countStatus();
   const fc = S.forecast(7);
   const maxF = Math.max(1, ...fc);
@@ -898,6 +939,7 @@ function renderMore() {
   const days = ['sö', 'må', 'ti', 'on', 'to', 'fr', 'lö'];
   const dname = off => days[new Date(Date.now() + off * 86400000).getDay()];
   view.innerHTML = `
+    ${moreSeg()}
     <header class="top"><div><h1>Statistik & inställningar</h1></div></header>
     <section class="grid3">
       <div class="stat"><b>🔥 ${streak()}</b><span>dagar i rad</span></div>
@@ -917,11 +959,21 @@ function renderMore() {
       <h3>Aktivitet senaste 14 dagarna</h3>
       <div class="bars">${hist.map((v, i) => `<div class="bcol"><i class="alt" style="height:${(v / maxH) * 60}px"></i><span class="small muted">${dname(i - 13)}</span></div>`).join('')}</div>
     </section>
+    <section class="card settings" id="pace-card">
+      <h3>Inlärningstakt</h3>
+      <div class="seg">${[['goal', '🎯 Mål i dagar'], ['fixed', 'Antal per dag'], ['free', 'Fri takt']].map(([k, l]) => `<button data-pace="${k}" class="${st.pace === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      ${st.pace === 'goal' ? `<label>Lär mig alla ord på (dagar) <span><input type="number" id="s-days" min="3" max="365" value="${st.goalDays}"></span></label>
+        <p class="muted small">Dag ${S.planDay()} av ${st.goalDays} · ${S.remainingNew()} ord kvar · <b>${S.dailyTarget()} nya ord idag</b>. Du kan alltid köra fler omgångar.</p>
+        <button class="btn ghost sm" id="s-restart">Starta om planen från idag</button>` : ''}
+      ${st.pace === 'fixed' ? `<label>Nya ord per dag <span><input type="number" id="s-new" min="1" max="1000" value="${st.newPerDay}"></span></label>` : ''}
+      ${st.pace === 'free' ? '<p class="muted small">Inget dagsmål – starta så många omgångar du vill.</p>' : ''}
+      <label>Nya ord per omgång <span><input type="number" id="s-round" min="5" max="100" value="${st.roundSize}"></span></label>
+      <p class="muted small">⚠️ Alla ${D.words.length} ord på 14 dagar betyder ca ${Math.ceil(D.words.length / 14)} nya ord om dagen plus repetitioner – räkna med 2–3 timmar per dag. Det går, men repetitionerna är det som gör att orden stannar kvar.</p>
+    </section>
     <section class="card settings">
       <h3>Inställningar</h3>
-      <label>Nya ord per dag <span><input type="number" id="s-new" min="0" max="100" value="${st.newPerDay}"></span></label>
       <label>Dagligt mål (antal svar) <span><input type="number" id="s-goal" min="5" max="500" value="${st.dailyGoal}"></span></label>
-      <label>Meningar per skrivpass <span><input type="number" id="s-sent" min="3" max="50" value="${st.sentencesPerSession}"></span></label>
+      <label>Meningar per skrivpass <span><input type="number" id="s-sent" min="3" max="100" value="${st.sentencesPerSession}"></span></label>
       <label>Kräv artikel (der/die/das) <input type="checkbox" id="s-art" ${st.requireArticle ? 'checked' : ''}></label>
       <label>Stor bokstav måste vara rätt <input type="checkbox" id="s-case" ${st.strictCase ? 'checked' : ''}></label>
       <label>Läs upp ord automatiskt <input type="checkbox" id="s-speak" ${st.autoSpeak ? 'checked' : ''}></label>
@@ -946,6 +998,7 @@ function renderMore() {
       <p><b>2. Repetera med växande intervall.</b> Efter inlärning kommer ordet tillbaka efter 1 dag, sedan 3, ungefär 7, 18, 45 dagar osv. Varje gång du minns det växer intervallet. Glömmer du det krymper intervallet och du får skriva ordet igen i samma pass.</p>
       <p><b>3. Aktiv återkallning.</b> Repetitioner är nästan alltid att <i>skriva</i> det tyska ordet (inte bara känna igen det). Ibland i en mening, ibland efter gehör.</p>
       <p><b>4. Använd orden.</b> Läs berättelser och samtal och översätt meningar – de låses upp när du kan orden i dem.</p>
+      <p><b>5. Grammatik och quiz.</b> Under Grammatik finns korta lektioner med övningar – de kommer tillbaka för repetition. I Quiz testar du dig själv per nivå och kan skicka felen direkt till träningen.</p>
       <p><b>Ord räknas som ”kan”</b> först när de klarat ett intervall på minst ${S.MASTERED} dagar.</p>
       <p class="muted small">Färger: <span class="g-der">der</span> = maskulinum, <span class="g-die">die</span> = femininum, <span class="g-das">das</span> = neutrum.</p>
     </section>
@@ -954,9 +1007,14 @@ function renderMore() {
       <p class="muted small center">Version ${window.APP_VERSION || ''} · ${D.words.length} ord · ${D.texts.length} texter · ${D.sentences.length} meningar</p>
     </section>`;
   const num = (id, key, min, max) => $(id).addEventListener('change', e => { st[key] = Math.max(min, Math.min(max, parseInt(e.target.value, 10) || min)); save(); });
-  num('#s-new', 'newPerDay', 0, 100);
+  $$('[data-pace]', view).forEach(b => b.addEventListener('click', () => { st.pace = b.dataset.pace; if (st.pace === 'goal' && st.goalStart == null) st.goalStart = today(); save(); renderMore(); }));
+  const sd = $('#s-days'); sd && sd.addEventListener('change', e => { st.goalDays = Math.max(3, Math.min(365, parseInt(e.target.value, 10) || 14)); save(); renderMore(); });
+  const sr = $('#s-restart'); sr && sr.addEventListener('click', () => { st.goalStart = today(); save(); renderMore(); toast('Planen startar om från idag'); });
+  const sn = $('#s-new'); sn && sn.addEventListener('change', e => { st.newPerDay = Math.max(1, Math.min(1000, parseInt(e.target.value, 10) || 20)); save(); });
+  num('#s-round', 'roundSize', 5, 100);
+  bindMoreSeg();
   num('#s-goal', 'dailyGoal', 5, 500);
-  num('#s-sent', 'sentencesPerSession', 3, 50);
+  num('#s-sent', 'sentencesPerSession', 3, 100);
   const chk = (id, key) => $(id).addEventListener('change', e => { st[key] = e.target.checked; save(); });
   chk('#s-art', 'requireArticle'); chk('#s-case', 'strictCase'); chk('#s-speak', 'autoSpeak'); chk('#s-listen', 'listening'); chk('#s-cloze', 'cloze');
   $('#s-rate').addEventListener('change', e => { st.rate = parseFloat(e.target.value); save(); speak('Guten Tag, wie geht es dir?'); });
@@ -1009,5 +1067,14 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden && today() !== lastDay) { lastDay = today(); if (!session && !sq) render(); }
 });
 
+const ctxObj = {
+  overlay, esc, shuffle, toast, umlautBar, speak, speakBtn, bindSpeak, deHTML, infoHTML, speakText, distractors, typeHintLine,
+  openOverlay() { overlay.hidden = false; document.body.classList.add('noscroll'); },
+  closeOverlay() { stopSpeech(); overlay.hidden = true; overlay.innerHTML = ''; overlay.onkeydown = null; document.body.classList.remove('noscroll'); render(); },
+  startSession: opts => startSession(opts),
+};
+setupGrammar(ctxObj);
+setupQuiz(ctxObj);
+
 render();
-window.__app = { D, S, state, render, get session() { return session; } };
+window.__app = { D, S, state, render, get session() { return session; }, G: grammarMod, Q: quizMod };
